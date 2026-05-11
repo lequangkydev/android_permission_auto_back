@@ -1,0 +1,18 @@
+*.iml
+.gradle
+/local.properties
+.idea/
+.DS_Store
+/build
+**/build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.claude/
+
+# Maven publish artifacts
+*.aar
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
