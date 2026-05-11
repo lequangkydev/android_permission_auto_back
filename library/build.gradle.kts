@@ -50,6 +50,7 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.annotation)
+    implementation(libs.androidx.activity.ktx)
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)

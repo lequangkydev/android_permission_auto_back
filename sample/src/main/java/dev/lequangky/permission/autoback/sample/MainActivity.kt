@@ -24,10 +24,13 @@ import kotlinx.coroutines.launch
  * Manual test harness for the Permission Auto Back library.
  *
  * For each enumerated permission below:
- *  - "Status" shows the current `isGranted()` verdict.
- *  - "Request" calls `openSettingsAndAwait()` — opens the right Settings page,
- *    polls every 500 ms, and brings the sample app back when granted.
- *  - "Callback" calls the callback variant with a manual `Cancellable` handle.
+ *  - "Status" shows the current `isGranted()` verdict (refreshed in `onResume`).
+ *  - "Request" calls `requestAndAwait()` — the recommended full-flow API. For
+ *    runtime permissions it shows the OS dialog first, and only falls back to
+ *    Settings if the user has permanently denied the permission.
+ *  - "Settings" calls `openSettings()` (callback variant) — skips the runtime
+ *    dialog entirely and opens the matching Settings page right away. Useful
+ *    for special permissions or for forcing the Settings path.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -47,7 +50,7 @@ class MainActivity : AppCompatActivity() {
     )
 
     private val entries = listOf(
-        Entry("Camera", Permission.Runtime.Camera, "Runtime — settings → app details."),
+        Entry("Camera", Permission.Runtime.Camera),
         Entry("Microphone", Permission.Runtime.RecordAudio),
         Entry("Location (fine)", Permission.Runtime.AccessFineLocation),
         Entry(
@@ -173,28 +176,29 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.END
         }
 
-        val callbackButton = Button(this).apply {
-            text = "Callback"
-            setOnClickListener { runCallback(entry) }
+        val settingsButton = Button(this).apply {
+            text = "Settings"
+            setOnClickListener { runOpenSettings(entry) }
         }
-        buttonRow.addView(callbackButton)
+        buttonRow.addView(settingsButton)
         buttonRow.addView(spacer(dp(8)).apply {
             layoutParams = LinearLayout.LayoutParams(dp(8), 0)
         })
 
-        val suspendButton = Button(this).apply {
+        val requestButton = Button(this).apply {
             text = "Request"
-            setOnClickListener { runSuspend(entry) }
+            setOnClickListener { runRequest(entry) }
         }
-        buttonRow.addView(suspendButton)
+        buttonRow.addView(requestButton)
 
         card.addView(buttonRow)
         return card
     }
 
-    private fun runSuspend(entry: Entry) {
+    private fun runRequest(entry: Entry) {
         lifecycleScope.launch {
-            val granted = autoBack.openSettingsAndAwait(
+            val granted = autoBack.requestAndAwait(
+                this@MainActivity,
                 entry.permission,
                 Config(timeoutMs = 60_000L, debug = true),
             )
@@ -207,7 +211,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun runCallback(entry: Entry) {
+    private fun runOpenSettings(entry: Entry) {
         pendingCallback?.cancel()
         pendingCallback = autoBack.openSettings(
             entry.permission,
@@ -217,7 +221,7 @@ class MainActivity : AppCompatActivity() {
             updateStatus(entry, granted)
             Toast.makeText(
                 this,
-                "${entry.label} (cb): ${if (granted) "granted" else "not granted"}",
+                "${entry.label} (settings): ${if (granted) "granted" else "not granted"}",
                 Toast.LENGTH_SHORT,
             ).show()
         }

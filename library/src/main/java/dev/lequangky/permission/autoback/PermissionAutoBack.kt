@@ -2,10 +2,17 @@ package dev.lequangky.permission.autoback
 
 import android.app.Activity
 import android.content.Context
+import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.MainThread
+import androidx.core.app.ActivityCompat
 import dev.lequangky.permission.autoback.internal.PermissionChecker
 import dev.lequangky.permission.autoback.internal.PermissionPoller
 import dev.lequangky.permission.autoback.internal.SettingsNavigator
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.lang.ref.WeakReference
 import kotlin.coroutines.resume
@@ -133,6 +140,147 @@ public class PermissionAutoBack private constructor(
         return poller.start(appContext, permission, config, onResult)
     }
 
+    /**
+     * Full-flow permission request — the recommended entry point.
+     *
+     * Behavior:
+     *  - Already granted → returns `true` immediately.
+     *  - [Permission.Special] → no OS dialog exists for special permissions;
+     *    equivalent to [openSettingsAndAwait] (jumps straight to Settings + polls).
+     *  - [Permission.Runtime] / [Permission.Custom]:
+     *      1. Show the OS runtime-permission dialog.
+     *      2. User taps **Allow** → return `true`.
+     *      3. User taps **Deny** for the first time → return `false` (caller can
+     *         re-ask later; the system will show the dialog again).
+     *      4. User has permanently denied (two denies on API 30+, "Don't ask
+     *         again" on older Android) → automatically fall through to
+     *         [openSettingsAndAwait]: opens the app details page, polls, and
+     *         brings the host app back to the foreground once toggled on.
+     *
+     * Requires the host activity to extend [ComponentActivity] (which
+     * [androidx.appcompat.app.AppCompatActivity] and [androidx.fragment.app.FragmentActivity]
+     * already do). The Activity Result launcher is registered on the activity's
+     * [androidx.activity.result.ActivityResultRegistry] for the duration of the
+     * call and unregistered afterwards — safe to call from any lifecycle state.
+     */
+    @MainThread
+    public suspend fun requestAndAwait(
+        activity: ComponentActivity,
+        permission: Permission,
+        config: Config = Config.Default,
+    ): Boolean {
+        if (isGranted(permission)) return true
+
+        val manifestPerm = when (permission) {
+            is Permission.Runtime -> permission.manifestPermission
+            is Permission.Custom -> permission.manifestPermission
+            is Permission.Special -> return openSettingsAndAwait(permission, config)
+        }
+
+        // ACCESS_BACKGROUND_LOCATION on Android 11+ silently redirects to the
+        // app's location-permission Settings page instead of showing a dialog,
+        // and ActivityResultLauncher only delivers a result when the user
+        // manually navigates back. Run polling in parallel so we can auto-return
+        // the moment "Allow all the time" is selected.
+        //
+        // Foreground location is a prerequisite — without it the background
+        // request is denied silently by the OS, leaving the user confused.
+        val isBackgroundLocation = manifestPerm == BACKGROUND_LOCATION
+        val needsParallelPoll = isBackgroundLocation &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+
+        if (needsParallelPoll) {
+            val hasForeground = isGranted(Permission.Runtime.AccessFineLocation) ||
+                isGranted(Permission.Runtime.AccessCoarseLocation)
+            if (!hasForeground) {
+                val fineGranted = requestRuntimeDialog(
+                    activity,
+                    Permission.Runtime.AccessFineLocation.manifestPermission,
+                )
+                markPermissionAsked(Permission.Runtime.AccessFineLocation)
+                if (!fineGranted) return false
+            }
+        }
+
+        val grantedFromDialog = if (needsParallelPoll) {
+            requestRuntimeDialogWithParallelPoll(activity, permission, manifestPerm, config)
+        } else {
+            requestRuntimeDialog(activity, manifestPerm)
+        }
+        if (permission is Permission.Runtime) markPermissionAsked(permission)
+        if (grantedFromDialog) return true
+
+        val canAskAgain = ActivityCompat.shouldShowRequestPermissionRationale(
+            activity,
+            manifestPerm,
+        )
+        if (canAskAgain) return false
+
+        return openSettingsAndAwait(permission, config)
+    }
+
+    private suspend fun requestRuntimeDialog(
+        activity: ComponentActivity,
+        manifestPerm: String,
+    ): Boolean {
+        val key = "permission_auto_back_${manifestPerm.replace('.', '_')}_${System.nanoTime()}"
+        val deferred = CompletableDeferred<Boolean>()
+        val launcher = activity.activityResultRegistry.register(
+            key,
+            ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            deferred.complete(granted)
+        }
+        return try {
+            launcher.launch(manifestPerm)
+            deferred.await()
+        } finally {
+            launcher.unregister()
+        }
+    }
+
+    /**
+     * Hybrid flow for permissions where the OS redirects to Settings instead of
+     * showing a dialog (currently: `ACCESS_BACKGROUND_LOCATION` on Android 11+).
+     *
+     * Launches the OS request *and* polls in parallel — whichever resolves
+     * first wins. The poller is the one that brings the app back to the
+     * foreground; the launcher only delivers a result when the user manually
+     * navigates back, which defeats the "auto" in auto-back.
+     */
+    private suspend fun requestRuntimeDialogWithParallelPoll(
+        activity: ComponentActivity,
+        permission: Permission,
+        manifestPerm: String,
+        config: Config,
+    ): Boolean = coroutineScope {
+        val result = CompletableDeferred<Boolean>()
+
+        val key = "permission_auto_back_${manifestPerm.replace('.', '_')}_${System.nanoTime()}"
+        val launcher = activity.activityResultRegistry.register(
+            key,
+            ActivityResultContracts.RequestPermission(),
+        ) { granted ->
+            result.complete(granted)
+        }
+
+        val pollJob = launch {
+            runCatching {
+                val granted = pollAndAwait(permission, config)
+                if (granted) result.complete(true)
+            }
+        }
+
+        launcher.launch(manifestPerm)
+
+        try {
+            result.await()
+        } finally {
+            pollJob.cancel()
+            launcher.unregister()
+        }
+    }
+
     /** Cancel any in-flight poll. Safe to call when nothing is running. */
     @MainThread
     public fun cancel() {
@@ -140,6 +288,8 @@ public class PermissionAutoBack private constructor(
     }
 
     public companion object {
+        private const val BACKGROUND_LOCATION = "android.permission.ACCESS_BACKGROUND_LOCATION"
+
         /**
          * Create an instance bound to an [Activity]. The activity is held via
          * [WeakReference], so the library never keeps it from being collected.

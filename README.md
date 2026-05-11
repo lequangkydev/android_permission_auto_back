@@ -30,21 +30,42 @@ Maven Central or your internal repo, that one line is enough.)
 
 ## Quick start
 
+The recommended entry point is **`requestAndAwait()`** — it picks the right
+flow automatically based on the permission type:
+
 ```kotlin
 class MyActivity : AppCompatActivity() {
 
     private val autoBack by lazy { PermissionAutoBack.from(this) }
 
+    fun ensureCamera() = lifecycleScope.launch {
+        // Runtime perm: shows the OS dialog first; falls back to Settings
+        // only if the user has permanently denied.
+        val granted = autoBack.requestAndAwait(this@MyActivity, Permission.Runtime.Camera)
+        if (granted) openCamera() else showRationale()
+    }
+
     fun ensureOverlay() = lifecycleScope.launch {
-        val granted = autoBack.openSettingsAndAwait(Permission.Special.SystemAlertWindow)
+        // Special perm: no OS dialog exists; opens Settings → toggle → auto-return.
+        val granted = autoBack.requestAndAwait(
+            this@MyActivity, Permission.Special.SystemAlertWindow,
+        )
         if (granted) startOverlay() else showRetryUi()
     }
 }
 ```
 
-That's it. The library opens `Settings → Display over other apps → <your app>`,
-polls `Settings.canDrawOverlays(context)` every 500 ms, and re-launches your
-activity the moment the user flips the toggle.
+`requestAndAwait` requires a `ComponentActivity` (AppCompatActivity /
+FragmentActivity both qualify) so it can register an `ActivityResultLauncher`
+internally for the OS dialog.
+
+Behavior matrix:
+
+| Permission kind            | First denial            | Permanently denied / Special |
+| -------------------------- | ----------------------- | ---------------------------- |
+| `Permission.Runtime`       | shows OS dialog, returns `false` if denied | falls back to Settings + auto-return |
+| `Permission.Custom(...)`   | same as Runtime         | same as Runtime              |
+| `Permission.Special`       | (no dialog exists)      | opens Settings + auto-return |
 
 ## API surface
 
@@ -55,11 +76,14 @@ val autoBack = PermissionAutoBack.from(activity)   // recommended
 autoBack.isGranted(permission): Boolean
 autoBack.status(permission): PermissionStatus      // Granted / Denied / PermanentlyDenied
 
-// coroutines
-autoBack.openSettingsAndAwait(permission, config): Boolean   // suspend
-autoBack.pollAndAwait(permission, config): Boolean           // suspend
+// recommended — full flow (dialog + Settings fallback)
+autoBack.requestAndAwait(activity, permission, config): Boolean   // suspend
 
-// callbacks
+// lower-level — skip dialog, go straight to Settings + poll
+autoBack.openSettingsAndAwait(permission, config): Boolean   // suspend
+autoBack.pollAndAwait(permission, config): Boolean           // suspend (poll only)
+
+// callbacks (same low-level semantics)
 autoBack.openSettings(permission, config) { granted -> ... }: Cancellable
 autoBack.poll(permission, config) { granted -> ... }: Cancellable
 
@@ -113,24 +137,23 @@ use `Permission.Custom("android.permission.SOMETHING")`.
 
 ## Examples
 
-### Runtime permission that's been permanently denied
+### Runtime permission that might be permanently denied
+
+The simple way — `requestAndAwait` handles dialog AND Settings fallback for you:
 
 ```kotlin
-when (autoBack.status(Permission.Runtime.Camera)) {
-    PermissionStatus.Granted -> openCamera()
-    PermissionStatus.Denied -> requestRuntimeDialog()
-    PermissionStatus.PermanentlyDenied -> {
-        // The OS dialog won't show again. Take the user to app details.
-        lifecycleScope.launch {
-            if (autoBack.openSettingsAndAwait(Permission.Runtime.Camera)) {
-                openCamera()
-            }
-        }
+lifecycleScope.launch {
+    if (autoBack.requestAndAwait(this@MyActivity, Permission.Runtime.Camera)) {
+        openCamera()
+    } else {
+        // User actively denied once (not permanent). Show your own rationale.
+        showRationale()
     }
 }
 ```
 
-Combine with the standard ActivityResult API for the dialog itself:
+If you need finer control (e.g. you want to show a rationale dialog *before*
+the OS dialog), drop down to the low-level pieces:
 
 ```kotlin
 private val requestCamera = registerForActivityResult(
@@ -139,10 +162,18 @@ private val requestCamera = registerForActivityResult(
     autoBack.markPermissionAsked(Permission.Runtime.Camera)
     if (granted) openCamera() else maybeOfferSettings()
 }
+
+private fun maybeOfferSettings() {
+    if (autoBack.status(Permission.Runtime.Camera) == PermissionStatus.PermanentlyDenied) {
+        lifecycleScope.launch {
+            if (autoBack.openSettingsAndAwait(Permission.Runtime.Camera)) openCamera()
+        }
+    }
+}
 ```
 
 `markPermissionAsked` is what lets `status()` later distinguish "first launch,
-never asked" from "permanently denied".
+never asked" from "permanently denied". `requestAndAwait` calls it for you.
 
 ### Background location (Android 11+ split flow)
 
