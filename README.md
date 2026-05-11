@@ -10,6 +10,10 @@ A small Kotlin/Android library that handles the awkward dance of asking for a
 It also works for runtime permissions that have been permanently denied — the
 only path back from there is the app details page anyway.
 
+<p align="center">
+  <img src="screenshots/demo.gif" alt="Permission Auto Back demo" width="320" />
+</p>
+
 - **Min SDK:** 24
 - **Compile / target SDK:** 36
 - **Language:** Kotlin (explicit-API mode)
