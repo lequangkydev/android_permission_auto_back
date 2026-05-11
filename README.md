@@ -17,16 +17,39 @@ only path back from there is the app details page anyway.
 
 ## Install
 
-Add the Maven repo you publish to, then:
+### Via JitPack (current)
+
+In your **`settings.gradle.kts`** (project level), add the JitPack repo:
 
 ```kotlin
-dependencies {
-    implementation("dev.lequangky:permission-auto-back:0.1.0")
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }   // ← add this
+    }
 }
 ```
 
-(See `library/build.gradle.kts` for the `maven-publish` setup. Once published to
-Maven Central or your internal repo, that one line is enough.)
+In your **`app/build.gradle.kts`** (module level):
+
+```kotlin
+dependencies {
+    implementation("com.github.lequangkydev.android_permission_auto_back:library:0.1.0")
+}
+```
+
+The artifact is built on demand from the matching git tag — the first
+`implementation(...)` after a new tag triggers a fresh build on JitPack.
+Build status: <https://jitpack.io/#lequangkydev/android_permission_auto_back>.
+
+### Via Maven Central (planned)
+
+Once published, drop the JitPack repo line and use:
+
+```kotlin
+implementation("dev.lequangky:permission-auto-back:0.1.0")
+```
 
 ## Quick start
 

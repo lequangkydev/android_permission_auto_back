@@ -1,0 +1,8 @@
+jdk:
+  - openjdk21
+
+# Only build & publish the consumer-facing library module.
+# The :sample module is an Android app for manual testing, not a publishable
+# artifact.
+install:
+  - ./gradlew :library:publishToMavenLocal -x test
