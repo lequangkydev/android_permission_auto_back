@@ -13,6 +13,9 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import dev.lequangky.permission.autoback.Cancellable
 import dev.lequangky.permission.autoback.Config
@@ -109,19 +112,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildUi(): View {
-        val scroll = ScrollView(this)
+        // targetSdk 35+ enables edge-to-edge by default — without this listener
+        // the ScrollView draws under the status bar and navigation bar, hiding
+        // the first/last cards. Pad the ScrollView and let content scroll under
+        // the system bars (clipToPadding=false) — the standard Android pattern.
+        val scroll = ScrollView(this).apply { clipToPadding = false }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(12), dp(12), dp(12))
         }
-
-        val title = TextView(this).apply {
-            text = "Permission Auto Back — sample"
-            setTypeface(typeface, Typeface.BOLD)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-            setPadding(0, 0, 0, dp(12))
-        }
-        column.addView(title)
 
         entries.forEach { entry ->
             column.addView(buildCard(entry))
@@ -135,6 +134,13 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
             ),
         )
+
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(top = bars.top, bottom = bars.bottom)
+            insets
+        }
+
         return scroll
     }
 
