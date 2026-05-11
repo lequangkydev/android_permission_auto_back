@@ -35,7 +35,7 @@ In your **`app/build.gradle.kts`** (module level):
 
 ```kotlin
 dependencies {
-    implementation("com.github.lequangkydev.android_permission_auto_back:library:0.1.0")
+    implementation("com.github.lequangkydev:android_permission_auto_back:v0.1.0")
 }
 ```
 
