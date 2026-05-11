@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Permission Auto Back"
 include(":library")
+include(":sample")

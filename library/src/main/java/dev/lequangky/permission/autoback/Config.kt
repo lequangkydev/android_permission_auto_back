@@ -19,6 +19,7 @@ public data class Config(
     @param:IntRange(from = 50) public val pollIntervalMs: Long = DEFAULT_POLL_INTERVAL_MS,
     @param:IntRange(from = 1_000) public val timeoutMs: Long = DEFAULT_TIMEOUT_MS,
     public val bringAppToFrontOnGrant: Boolean = true,
+    public val debug: Boolean = false,
 ) {
     init {
         require(pollIntervalMs >= 50) { "pollIntervalMs must be >= 50 ms" }

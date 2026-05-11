@@ -189,6 +189,34 @@ override fun onStop() {
 }
 ```
 
+## Host-app manifest requirement (important)
+
+For the auto-return step to work reliably **on MIUI / HyperOS / ColorOS** and
+other OEMs with aggressive background-activity-start restrictions, the host
+app's launcher Activity **must** declare `android:taskAffinity=""`:
+
+```xml
+<activity
+    android:name=".MainActivity"
+    android:exported="true"
+    android:launchMode="singleTop"
+    android:taskAffinity="">                            <!-- ← required -->
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.LAUNCHER" />
+    </intent-filter>
+</activity>
+```
+
+Without an empty task affinity, those OEMs treat the bring-to-front call as a
+fresh launch from background and silently block it (no exception, no log) — the
+permission gets granted but the user is left stranded on the Settings page.
+On stock Android the polling still works either way; this attribute only
+matters for OEM compatibility.
+
+Pair this with `android:launchMode="singleTop"` so the existing instance is
+reused instead of re-created.
+
 ## Threading
 
 - All public methods on `PermissionAutoBack` must be invoked from the main

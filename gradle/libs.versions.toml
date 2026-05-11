@@ -4,6 +4,9 @@ kotlin = "2.0.21"
 coroutines = "1.9.0"
 coreKtx = "1.13.1"
 annotation = "1.8.2"
+activity = "1.9.3"
+lifecycle = "2.8.7"
+appcompat = "1.7.0"
 junit = "4.13.2"
 junitVersion = "1.2.1"
 mockito = "5.14.2"
@@ -13,6 +16,9 @@ robolectric = "4.13"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-annotation = { group = "androidx.annotation", name = "annotation", version.ref = "annotation" }
+androidx-activity-ktx = { group = "androidx.activity", name = "activity-ktx", version.ref = "activity" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -23,5 +29,6 @@ mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", versio
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
